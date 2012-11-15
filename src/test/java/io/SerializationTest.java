@@ -30,7 +30,7 @@ public class SerializationTest {
 
    @Test
    public void createMapWithManyOperationsOnTime() throws Exception {
-      DefaultSerializer.registerSerializer(new ValueSerializer(true));
+      DefaultSerializer.registerSerializer(new ValueSerializer(true, true));
 
       Config config = new Config();
       config.getNetworkConfig().getJoin().getMulticastConfig().setEnabled(false);
@@ -97,11 +97,19 @@ public class SerializationTest {
 
       private final boolean useLZ4;
 
-      private static final LZ4Compressor COMPRESSOR = LZ4Factory.unsafeInstance().fastCompressor();
-      private static final LZ4Uncompressor UNCOMPRESSOR = LZ4Factory.unsafeInstance().uncompressor();
+      private static LZ4Compressor compressor;
+      private static LZ4Uncompressor uncompressor;
 
-      private ValueSerializer(boolean useLZ4) {
+      private ValueSerializer(boolean useLZ4, boolean useFastCompressor) {
          this.useLZ4 = useLZ4;
+         if(useLZ4) {
+            if(useFastCompressor) {
+               compressor = LZ4Factory.unsafeInstance().fastCompressor();
+            } else {
+               compressor = LZ4Factory.unsafeInstance().highCompressor();
+            }
+            uncompressor = LZ4Factory.unsafeInstance().uncompressor();
+         }
       }
 
       public int priority() {
@@ -123,9 +131,9 @@ public class SerializationTest {
 
          if (useLZ4) {
             final byte[] stringBytes = value.getSomeString().getBytes("UTF-8");
-            final int maxLength = COMPRESSOR.maxCompressedLength(stringBytes.length);
+            final int maxLength = compressor.maxCompressedLength(stringBytes.length);
             final byte[] compressed = new byte[maxLength];
-            final int length = COMPRESSOR.compress(stringBytes, 0, stringBytes.length, compressed, 0, maxLength);
+            final int length = compressor.compress(stringBytes, 0, stringBytes.length, compressed, 0, maxLength);
 
             os.writeInt(stringBytes.length);
             os.writeInt(length);
@@ -147,7 +155,7 @@ public class SerializationTest {
             final byte[] uncompressed = new byte[uncompressedLength];
 
             is.readFully(bytes);
-            UNCOMPRESSOR.uncompress(bytes, 0, uncompressed, 0, uncompressedLength);
+            uncompressor.uncompress(bytes, 0, uncompressed, 0, uncompressedLength);
             someString = new String(uncompressed, "UTF-8");
          } else {
             someString = is.readUTF();
